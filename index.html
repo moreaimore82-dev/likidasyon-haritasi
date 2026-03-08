@@ -713,6 +713,27 @@ function App() {
     const prevSignalRef = useRef('HOLD');
     const { play, initCtx, audioReady } = useAudio();
 
+    const [installPrompt, setInstallPrompt] = useState(null);
+    const [isInstalled,   setIsInstalled]   = useState(
+        () => window.matchMedia('(display-mode: standalone)').matches
+    );
+    useEffect(()=>{
+        const onPrompt = e => { e.preventDefault(); setInstallPrompt(e); };
+        const onInstalled = () => { setIsInstalled(true); setInstallPrompt(null); };
+        window.addEventListener('beforeinstallprompt', onPrompt);
+        window.addEventListener('appinstalled', onInstalled);
+        return () => {
+            window.removeEventListener('beforeinstallprompt', onPrompt);
+            window.removeEventListener('appinstalled', onInstalled);
+        };
+    }, []);
+    const handleInstall = useCallback(async()=>{
+        if (!installPrompt) return;
+        installPrompt.prompt();
+        const { outcome } = await installPrompt.userChoice;
+        if (outcome === 'accepted') { setInstallPrompt(null); setIsInstalled(true); }
+    }, [installPrompt]);
+
     const config   = COIN_CONFIGS[symbol];
     const tfConfig = useMemo(()=>TIMEFRAMES.find(t=>t.id===timeframe)||TIMEFRAMES[4],[timeframe]);
 
@@ -897,6 +918,12 @@ function App() {
                                 {soundOn&&!audioReady&&<span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-yellow-400 rounded-full border border-zinc-900"/>}
                             </button>
                         </div>
+                        {installPrompt && !isInstalled && (
+                            <button onClick={handleInstall}
+                                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[10px] font-bold bg-indigo-500 hover:bg-indigo-400 text-white shadow-lg shadow-indigo-500/30 transition-all active:scale-95 shrink-0">
+                                <Zap c="w-3 h-3"/> Yükle
+                            </button>
+                        )}
                         <button onClick={()=>setIsDark(!isDark)} className={cn("p-1.5 rounded-full transition-colors hover:bg-slate-500/10 hidden sm:block",muted)}>{isDark?<Sun c="w-4 h-4"/>:<Moon c="w-4 h-4"/>}</button>
                         <button onClick={fetchData} disabled={loading} className={cn("p-1.5 rounded-full transition-colors hover:bg-slate-500/10",muted,loading&&'opacity-40 cursor-not-allowed')}><RefreshCw c={cn("w-4 h-4",loading&&'spin-slow')}/></button>
                     </div>
