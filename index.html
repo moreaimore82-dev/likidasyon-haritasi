@@ -1,0 +1,1110 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Likidasyon Haritası Pro</title>
+    <meta name="theme-color" content="#0a0a0a">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="LiqMap">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/prop-types@15.8.1/prop-types.min.js"></script>
+    <script crossorigin src="https://unpkg.com/recharts@2.1.12/umd/Recharts.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <style>
+        *, *::before, *::after { box-sizing: border-box; }
+        html, body { margin: 0; padding: 0; width: 100%; overflow-x: hidden; -webkit-tap-highlight-color: transparent; }
+        .custom-scrollbar::-webkit-scrollbar { width: 4px; height: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #6366f150; border-radius: 4px; }
+        .hide-scrollbar::-webkit-scrollbar { display: none; }
+        .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        input[type=range] { -webkit-appearance: none; appearance: none; height: 4px; border-radius: 4px; outline: none; cursor: pointer; }
+        input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 14px; height: 14px; border-radius: 50%; background: #6366f1; cursor: pointer; border: 2px solid white; box-shadow: 0 0 4px rgba(99,102,241,0.5); }
+        input[type=range]::-moz-range-thumb { width: 14px; height: 14px; border-radius: 50%; background: #6366f1; cursor: pointer; border: 2px solid white; }
+        @keyframes pulse-dot { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.5;transform:scale(.8)} }
+        .pulse-dot { animation: pulse-dot 1.5s ease-in-out infinite; }
+        @keyframes spin-slow { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
+        .spin-slow { animation: spin-slow 1s linear infinite; }
+        @keyframes fadeIn { from{opacity:0;transform:translateY(-6px)} to{opacity:1;transform:translateY(0)} }
+        .fade-in { animation: fadeIn .2s ease-out forwards; }
+        @keyframes slideUp { from{opacity:0;transform:translateY(12px)} to{opacity:1;transform:translateY(0)} }
+        .slide-up { animation: slideUp .3s ease-out forwards; }
+        .no-spin::-webkit-inner-spin-button, .no-spin::-webkit-outer-spin-button { -webkit-appearance:none; margin:0; }
+        .no-spin { -moz-appearance: textfield; }
+        @keyframes toastIn { from{opacity:0;transform:translateX(100%) scale(0.9)} to{opacity:1;transform:translateX(0) scale(1)} }
+        @keyframes toastOut { from{opacity:1;transform:translateX(0) scale(1)} to{opacity:0;transform:translateX(100%) scale(0.9)} }
+        .toast-in  { animation: toastIn  .35s cubic-bezier(.34,1.56,.64,1) forwards; }
+        .toast-out { animation: toastOut .3s ease-in forwards; }
+        @keyframes bellShake { 0%,100%{transform:rotate(0deg)} 15%{transform:rotate(18deg)} 30%{transform:rotate(-16deg)} 45%{transform:rotate(12deg)} 60%{transform:rotate(-8deg)} 75%{transform:rotate(4deg)} }
+        .bell-shake { animation: bellShake .6s ease-in-out; }
+        @keyframes ringPulse { 0%{box-shadow:0 0 0 0 rgba(99,102,241,.7)} 70%{box-shadow:0 0 0 8px rgba(99,102,241,0)} 100%{box-shadow:0 0 0 0 rgba(99,102,241,0)} }
+        .ring-pulse { animation: ringPulse .8s ease-out 2; }
+    </style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useEffect, useRef, useCallback, useMemo } = React;
+const { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
+        ResponsiveContainer, Cell, ReferenceLine } = window.Recharts;
+
+/* ═══════════════════════════════════════════════════════════════
+   İKONLAR
+═══════════════════════════════════════════════════════════════ */
+const Ic = ({ className:c, lines=[], paths=[], circles=[], polylines=[], polygons=[] }) => (
+    <svg className={c} xmlns="http://www.w3.org/2000/svg" width="24" height="24"
+        viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+        strokeLinecap="round" strokeLinejoin="round">
+        {paths.map((d,i)=><path key={i} d={d}/>)}
+        {lines.map((l,i)=><line key={i} x1={l[0]} y1={l[1]} x2={l[2]} y2={l[3]}/>)}
+        {circles.map((cl,i)=><circle key={i} cx={cl[0]} cy={cl[1]} r={cl[2]}/>)}
+        {polylines.map((p,i)=><polyline key={i} points={p}/>)}
+        {polygons.map((p,i)=><polygon key={i} points={p}/>)}
+    </svg>
+);
+const TrendingUp   = ({c}) => <Ic className={c} polylines={["22 7 13.5 15.5 8.5 10.5 2 17","16 7 22 7 22 13"]}/>;
+const TrendingDown = ({c}) => <Ic className={c} polylines={["22 17 13.5 8.5 8.5 13.5 2 7","16 17 22 17 22 11"]}/>;
+const Activity     = ({c}) => <Ic className={c} polylines={["22 12 18 12 15 21 9 3 6 12 2 12"]}/>;
+const AlertCircle  = ({c}) => <Ic className={c} circles={[[12,12,10]]} lines={[[12,8,12,12],[12,16,12.01,16]]}/>;
+const CheckCircle2 = ({c}) => <Ic className={c} paths={["M22 11.08V12a10 10 0 1 1-5.93-9.14","M22 4L12 14.01l-3-3"]}/>;
+const InfoIcon     = ({c}) => <Ic className={c} circles={[[12,12,10]]} lines={[[12,16,12,12],[12,8,12.01,8]]}/>;
+const Magnet       = ({c}) => <Ic className={c} paths={["m6 15-4-4 6.75-6.77a7.79 7.79 0 0 1 11 11L13 22l-4-4 6.39-6.36a2.14 2.14 0 0 0-3-3L6 15"]}/>;
+const Moon         = ({c}) => <Ic className={c} paths={["M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"]}/>;
+const Sun          = ({c}) => <Ic className={c} circles={[[12,12,4]]} paths={["M12 2v2","M12 20v2","m4.93 4.93 1.41 1.41","m17.66 17.66 1.41 1.41","M2 12h2","M20 12h2","m6.34 17.66-1.41 1.41","m19.07 4.93-1.41 1.41"]}/>;
+const Bell         = ({c}) => <Ic className={c} paths={["M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9","M10.3 21a1.94 1.94 0 0 0 3.4 0"]}/>;
+const BellOff      = ({c}) => <Ic className={c} paths={["M13.73 21a2 2 0 0 1-3.46 0","M18.63 13A17.89 17.89 0 0 1 18 8","M6.26 6.26A5.86 5.86 0 0 0 6 8c0 7-3 9-3 9h14","M18 8a6 6 0 0 0-9.33-5"]} lines={[[1,1,23,23]]}/>;
+const HistoryIcon  = ({c}) => <Ic className={c} paths={["M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8","M3 3v5h5","M12 7v5l4 2"]}/>;
+const ChevronDown  = ({c}) => <Ic className={c} paths={["m6 9 6 6 6-6"]}/>;
+const Trash2       = ({c}) => <Ic className={c} polylines={["3 6 5 6 21 6"]} paths={["M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"]} lines={[[10,11,10,17],[14,11,14,17]]}/>;
+const Shield       = ({c}) => <Ic className={c} paths={["M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"]}/>;
+const Zap          = ({c}) => <Ic className={c} polygons={["13 2 3 14 12 14 11 22 21 10 12 10 13 2"]}/>;
+const XIcon        = ({c}) => <Ic className={c} lines={[[18,6,6,18],[6,6,18,18]]}/>;
+const WifiOff      = ({c}) => <Ic className={c} paths={["M1 6C5 2 10.5 0 16.5 1","M16.72 11.06A10.94 10.94 0 0 1 19 12.55","M5 12.55a10.94 10.94 0 0 1 5.17-2.39","M10.71 5.05A16 16 0 0 1 22.56 9","M1.42 9a15.91 15.91 0 0 1 4.7-2.88"]} lines={[[1,1,23,23]]} circles={[[12,20,1]]}/>;
+const RefreshCw    = ({c}) => <Ic className={c} paths={["M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8","M3 3v5h5"]}/>;
+const StopCircle   = ({c}) => <Ic className={c} circles={[[12,12,10]]} paths={["M9 9h6v6H9z"]}/>;
+const Lock         = ({c}) => <Ic className={c} paths={["M19 11H5a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7a2 2 0 0-2-2z","M7 11V7a5 5 0 0 1 10 0v4"]}/>;
+const Unlock       = ({c}) => <Ic className={c} paths={["M19 11H5a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7a2 2 0 0-2-2z","M7 11V7a5 5 0 0 1 9.9-1"]}/>;
+const Target       = ({c}) => <Ic className={c} circles={[[12,12,10],[12,12,6],[12,12,2]]}/>;
+const StarIcon     = ({c}) => <Ic className={c} polygons={["12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"]}/>;
+const Volume2      = ({c}) => <Ic className={c} polygons={["11 5 6 9 2 9 2 15 6 15 11 19 11 5"]} paths={["M19.07 4.93a10 10 0 0 1 0 14.14","M15.54 8.46a5 5 0 0 1 0 7.07"]}/>;
+const VolumeX      = ({c}) => <Ic className={c} polygons={["11 5 6 9 2 9 2 15 6 15 11 19 11 5"]} lines={[[23,9,17,15],[17,9,23,15]]}/>;
+
+/* ═══════════════════════════════════════════════════════════════
+   YARDIMCI
+═══════════════════════════════════════════════════════════════ */
+const cn     = (...cls) => cls.filter(Boolean).join(' ');
+const fmt    = (d) => new Intl.DateTimeFormat('tr-TR',{hour:'2-digit',minute:'2-digit',second:'2-digit'}).format(d);
+const fmtUSD = (v) => new Intl.NumberFormat('en-US',{style:'currency',currency:'USD',notation:'compact',maximumFractionDigits:2}).format(v);
+const fmtP   = (v,d=2) => v!=null?v.toLocaleString(undefined,{minimumFractionDigits:d,maximumFractionDigits:d}):'---';
+
+/* ═══════════════════════════════════════════════════════════════
+   HOOKS
+═══════════════════════════════════════════════════════════════ */
+function useDebounce(value, delay) {
+    const [dv,setDv]=useState(value);
+    useEffect(()=>{const t=setTimeout(()=>setDv(value),delay);return()=>clearTimeout(t);},[value,delay]);
+    return dv;
+}
+function useLocalStorage(key, initial) {
+    const [state,setState]=useState(()=>{
+        try{
+            const raw=localStorage.getItem(key);
+            if(!raw)return initial;
+            const parsed=JSON.parse(raw);
+            if(key==='liqmap_history')return parsed.map(i=>({...i,time:new Date(i.time)}));
+            return parsed;
+        }catch{return initial;}
+    });
+    useEffect(()=>{try{localStorage.setItem(key,JSON.stringify(state));}catch{}},[key,state]);
+    return [state,setState];
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   ╔═══════════════════════════════════════════════════════════╗
+   ║          RENK SİSTEMİ — TASARIM KARARI                   ║
+   ╠═══════════════════════════════════════════════════════════╣
+   ║                                                           ║
+   ║  Her bar iki boyutta değerlendirilir:                     ║
+   ║                                                           ║
+   ║  1. TÜR (type): BID mi ASK mi?                           ║
+   ║     • BID = alış emirleri → fiyatın ALTINDA              ║
+   ║     • ASK = satış emirleri → fiyatın ÜSTÜNDE             ║
+   ║                                                           ║
+   ║  2. SİNYAL BAĞLAMI: Aktif sinyal ne?                     ║
+   ║     • BUY sinyali  → ASK duvarı = HEDEF (parlak mavi)    ║
+   ║                      BID duvarı = DESTEK (yeşil)          ║
+   ║     • SELL sinyali → BID duvarı = HEDEF (parlak turuncu) ║
+   ║                      ASK duvarı = DİRENÇ (kırmızı)       ║
+   ║     • HOLD / yok   → BID=yeşil, ASK=kırmızı (nötr)      ║
+   ║                                                           ║
+   ║  3. EŞİK DURUMU: minVolume altındaki barlar              ║
+   ║     → Çok soluk (opacity 0.08), gri-mavi ton             ║
+   ║       Renk bilgisi taşımaz, "gürültü" olduğunu gösterir  ║
+   ║                                                           ║
+   ║  HEDEF BAR özel işaretleme:                              ║
+   ║     → maxAsk (BUY hedefi) : parlak mavi + altın border   ║
+   ║     → maxBid (SELL hedefi): parlak turuncu + altın border ║
+   ║                                                           ║
+   ╚═══════════════════════════════════════════════════════════╝
+
+   Renk paleti:
+     BID (destek/alış bölgesi)
+       aktif+eşik üstü  : #22c55e  (yeşil-500)
+       aktif+eşik altı  : #14532d  (çok koyu yeşil, neredeyse gri)
+     ASK (direnç/satış bölgesi)
+       aktif+eşik üstü  : #ef4444  (kırmızı-500)
+       aktif+eşik altı  : #7f1d1d  (çok koyu kırmızı)
+     HEDEF bar (sinyale göre)
+       BUY  hedefi (maxAsk) : #38bdf8  (gökyüzü mavisi)
+       SELL hedefi (maxBid) : #fb923c  (turuncu)
+═══════════════════════════════════════════════════════════════ */
+function getBarColor(bar, signal, maxAskPrice, maxBidPrice, minVolume) {
+    const isAboveThreshold = bar.volume >= minVolume;
+    const isTargetBar =
+        (signal === 'BUY'  && bar.type === 'ASK' && bar.price === maxAskPrice) ||
+        (signal === 'SELL' && bar.type === 'BID' && bar.price === maxBidPrice);
+
+    /* — Hedef bar: sinyal yönünün çektiği ana likidite noktası — */
+    if (isTargetBar && isAboveThreshold) {
+        return {
+            fill:    signal === 'BUY' ? '#38bdf8' : '#fb923c',
+            opacity: 1.0,
+            isTarget: true,
+        };
+    }
+
+    /* — Eşik altı: gürültü, renk anlamı yok — */
+    if (!isAboveThreshold) {
+        return {
+            fill:    bar.type === 'BID' ? '#166534' : '#7f1d1d',
+            opacity: 0.18,
+            isTarget: false,
+        };
+    }
+
+    /* — Normal barlar: türe göre renk — */
+    if (bar.type === 'BID') {
+        /* Alış bölgesi: yeşil.
+           BUY sinyalinde destek = iyi, SELL sinyalinde bu barlar
+           hedefin önünde direniyor — yine de yeşil ama biraz soluk */
+        const opacity = signal === 'SELL' ? 0.55 : 0.85;
+        return { fill: '#22c55e', opacity, isTarget: false };
+    } else {
+        /* Satış bölgesi: kırmızı.
+           SELL sinyalinde direnç = güçlü baskı, BUY'da engel */
+        const opacity = signal === 'BUY' ? 0.55 : 0.85;
+        return { fill: '#ef4444', opacity, isTarget: false };
+    }
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   SES HOOK
+═══════════════════════════════════════════════════════════════ */
+function useAudio() {
+    const ctxRef = useRef(null);
+    const [audioReady, setAudioReady] = useState(false);
+    const initCtx = useCallback(() => {
+        try {
+            if (!ctxRef.current || ctxRef.current.state === 'closed')
+                ctxRef.current = new (window.AudioContext || window.webkitAudioContext)();
+            if (ctxRef.current.state === 'suspended')
+                ctxRef.current.resume().then(() => setAudioReady(true));
+            else setAudioReady(true);
+        } catch(e) { console.warn('AudioContext:', e); }
+    }, []);
+    const playTone = useCallback((freq, startTime, duration, gainPeak=0.18, type='sine') => {
+        const ctx = ctxRef.current;
+        if (!ctx || ctx.state !== 'running') return;
+        const osc=ctx.createOscillator(), gain=ctx.createGain();
+        osc.connect(gain); gain.connect(ctx.destination);
+        osc.type=type; osc.frequency.setValueAtTime(freq, startTime);
+        gain.gain.setValueAtTime(0, startTime);
+        gain.gain.linearRampToValueAtTime(gainPeak, startTime+0.02);
+        gain.gain.exponentialRampToValueAtTime(0.001, startTime+duration);
+        osc.start(startTime); osc.stop(startTime+duration+0.01);
+    }, []);
+    const play = useCallback((type) => {
+        const ctx = ctxRef.current;
+        if (!ctx || ctx.state !== 'running') return false;
+        const now = ctx.currentTime;
+        if (type==='BUY') {
+            playTone(523.25, now, 0.18, 0.15, 'sine');
+            playTone(659.25, now+0.12, 0.18, 0.15, 'sine');
+            playTone(783.99, now+0.24, 0.18, 0.15, 'sine');
+            playTone(1046.5, now+0.36, 0.28, 0.18, 'sine');
+        } else if (type==='SELL') {
+            playTone(783.99, now, 0.18, 0.15, 'triangle');
+            playTone(659.25, now+0.12, 0.18, 0.15, 'triangle');
+            playTone(523.25, now+0.24, 0.18, 0.15, 'triangle');
+            playTone(440.00, now+0.36, 0.28, 0.18, 'triangle');
+        } else if (type==='TEST') {
+            playTone(880, now, 0.12, 0.12, 'sine');
+            playTone(1320, now+0.1, 0.12, 0.12, 'sine');
+        }
+        return true;
+    }, [playTone]);
+    useEffect(() => () => { ctxRef.current?.close(); }, []);
+    return { play, initCtx, audioReady };
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   BİLDİRİM TOAST
+═══════════════════════════════════════════════════════════════ */
+function NotificationToast({ toast, onDismiss, isDark }) {
+    const [exiting, setExiting] = useState(false);
+    useEffect(() => {
+        if (!toast) return;
+        const t1=setTimeout(()=>setExiting(true), 4600);
+        const t2=setTimeout(()=>{ setExiting(false); onDismiss(); }, 5000);
+        return () => { clearTimeout(t1); clearTimeout(t2); };
+    }, [toast, onDismiss]);
+    if (!toast) return null;
+    const isBuy=toast.signal==='BUY';
+    return (
+        <div className={cn("fixed top-20 right-3 sm:right-5 z-[9999] w-72 sm:w-80 rounded-2xl border shadow-2xl overflow-hidden",
+            exiting?'toast-out':'toast-in',
+            isDark?`bg-zinc-900 ${isBuy?'border-emerald-500/40':'border-rose-500/40'}`:`bg-white ${isBuy?'border-emerald-400/50':'border-rose-400/50'}`)}>
+            <div className={cn("h-1 w-full",isBuy?"bg-emerald-500":"bg-rose-500")}/>
+            <div className="p-4">
+                <div className="flex items-start gap-3">
+                    <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center shrink-0",isBuy?"bg-emerald-500/20":"bg-rose-500/20")}>
+                        {isBuy?<TrendingUp c="w-5 h-5 text-emerald-500"/>:<TrendingDown c="w-5 h-5 text-rose-500"/>}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between gap-2 mb-0.5">
+                            <div className="flex items-center gap-1.5">
+                                <span className={cn("text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full",
+                                    isBuy?"bg-emerald-500/20 text-emerald-400":"bg-rose-500/20 text-rose-400")}>
+                                    {isBuy?'AL':'SAT'} SİNYALİ
+                                </span>
+                                <span className={cn("text-[9px] font-bold",isDark?"text-zinc-400":"text-slate-500")}>{toast.symbol?.replace('USDT','')}</span>
+                            </div>
+                            <button onClick={()=>{setExiting(true);setTimeout(onDismiss,300);}}
+                                className={cn("p-0.5 rounded-md transition-colors shrink-0",isDark?"text-zinc-500 hover:text-zinc-300":"text-slate-400 hover:text-slate-600")}>
+                                <XIcon c="w-3.5 h-3.5"/>
+                            </button>
+                        </div>
+                        <div className="flex items-baseline gap-2 mt-1">
+                            <span className={cn("text-lg font-bold font-mono",isDark?"text-zinc-100":"text-slate-900")}>
+                                ${toast.price?.toLocaleString(undefined,{maximumFractionDigits:2})}
+                            </span>
+                            {toast.target&&<span className={cn("text-[10px] font-mono font-semibold",isBuy?"text-emerald-500":"text-rose-500")}>
+                                → ${toast.target?.toLocaleString(undefined,{maximumFractionDigits:2})}
+                            </span>}
+                        </div>
+                        {toast.conf>0&&(
+                            <div className="flex items-center gap-1.5 mt-1.5">
+                                <Shield c="w-3 h-3 text-indigo-400"/>
+                                <span className={cn("text-[9px] font-medium",isDark?"text-zinc-400":"text-slate-500")}>
+                                    Güven: <span className="text-indigo-400 font-bold">%{toast.conf}</span>
+                                </span>
+                                <span className={cn("text-[9px]",isDark?"text-zinc-600":"text-slate-300")}>•</span>
+                                <span className={cn("text-[9px]",isDark?"text-zinc-500":"text-slate-400")}>{fmt(new Date())}</span>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            </div>
+            <div className={cn("h-0.5 w-full",isDark?"bg-zinc-800":"bg-slate-100")}>
+                <div className={cn("h-full",isBuy?"bg-emerald-500":"bg-rose-500")} style={{animation:'toastProgress 5s linear forwards'}}/>
+            </div>
+            <style>{`@keyframes toastProgress{from{width:100%}to{width:0%}}`}</style>
+        </div>
+    );
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   API
+═══════════════════════════════════════════════════════════════ */
+const fetchWithRetry = async (url, retries=3, baseDelay=1000) => {
+    for (let i=0;i<retries;i++) {
+        try {
+            const ctrl=new AbortController();
+            const timer=setTimeout(()=>ctrl.abort(),10000);
+            const res=await fetch(url,{signal:ctrl.signal});
+            clearTimeout(timer);
+            if(res.status===429){await new Promise(r=>setTimeout(r,baseDelay*Math.pow(2,i)));continue;}
+            if(!res.ok)throw new Error(`HTTP ${res.status}`);
+            return await res.json();
+        } catch(err) {
+            if(i===retries-1)throw err;
+            await new Promise(r=>setTimeout(r,baseDelay*Math.pow(2,i)));
+        }
+    }
+};
+const apiOrderBook = (sym,lim=1000) => fetchWithRetry(`https://fapi.binance.com/fapi/v1/depth?symbol=${sym}&limit=${lim}`);
+const apiPrice = async (sym) => { const d=await fetchWithRetry(`https://fapi.binance.com/fapi/v1/ticker/price?symbol=${sym}`); return parseFloat(d.price); };
+const apiKlines = (sym,tf) => fetchWithRetry(`https://fapi.binance.com/fapi/v1/klines?symbol=${sym}&interval=${tf}&limit=1000`);
+const api24h = (sym) => fetchWithRetry(`https://fapi.binance.com/fapi/v1/ticker/24hr?symbol=${sym}`);
+
+/* ═══════════════════════════════════════════════════════════════
+   SABİTLER
+═══════════════════════════════════════════════════════════════ */
+const COIN_CONFIGS = {
+    BTCUSDT: {name:'Bitcoin',  defaultVol:10,     maxVol:200,     step:1,     bucketSize:50   },
+    ETHUSDT: {name:'Ethereum', defaultVol:100,    maxVol:2000,    step:10,    bucketSize:5    },
+    SOLUSDT: {name:'Solana',   defaultVol:1000,   maxVol:20000,   step:100,   bucketSize:0.5  },
+    XRPUSDT: {name:'Ripple',   defaultVol:100000, maxVol:3000000, step:10000, bucketSize:0.005},
+    AVAXUSDT:{name:'Avalanche',defaultVol:2000,   maxVol:40000,   step:200,   bucketSize:0.2  },
+};
+const TIMEFRAMES = [
+    {id:'LIVE',label:'Anlık Defter',volMult:1,   buckMult:1, defProx:5, defProf:0.5,maxProx:15, maxProf:5, slMult:1.0,reliability:'Düşük'   },
+    {id:'5m',  label:'5 Dakika',    volMult:5,   buckMult:1, defProx:5, defProf:0.5,maxProx:15, maxProf:5, slMult:1.2,reliability:'Düşük'   },
+    {id:'15m', label:'15 Dakika',   volMult:15,  buckMult:1, defProx:8, defProf:1.0,maxProx:20, maxProf:10,slMult:1.5,reliability:'Orta'    },
+    {id:'1h',  label:'1 Saat',      volMult:50,  buckMult:2, defProx:10,defProf:2.0,maxProx:30, maxProf:15,slMult:1.8,reliability:'İyi'     },
+    {id:'4h',  label:'4 Saat',      volMult:150, buckMult:4, defProx:15,defProf:3.0,maxProx:30, maxProf:15,slMult:2.0,reliability:'Çok İyi' },
+    {id:'12h', label:'12 Saat',     volMult:300, buckMult:6, defProx:20,defProf:4.0,maxProx:40, maxProf:20,slMult:2.2,reliability:'Çok İyi' },
+    {id:'1d',  label:'24 Saat',     volMult:500, buckMult:10,defProx:25,defProf:5.0,maxProx:50, maxProf:25,slMult:2.5,reliability:'Mükemmel'},
+    {id:'1w',  label:'1 Hafta',     volMult:2000,buckMult:25,defProx:40,defProf:10, maxProx:80, maxProf:50,slMult:3.0,reliability:'Mükemmel'},
+    {id:'1M',  label:'1 Ay',        volMult:5000,buckMult:50,defProx:50,defProf:15, maxProx:100,maxProf:80,slMult:3.5,reliability:'Mükemmel'},
+];
+const getLeverage = (target,current) => {
+    const d=(Math.abs(target-current)/current)*100;
+    if(d<=1.2)return'100x';if(d<=2.5)return'50x';if(d<=5.0)return'25x';return'10x';
+};
+
+/* ═══════════════════════════════════════════════════════════════
+   TAKE PROFIT
+═══════════════════════════════════════════════════════════════ */
+function calcTakeProfit(analysis, tfConfig, dailyVolPct, autoSL) {
+    if (!analysis||analysis.signal==='HOLD') return null;
+    const {signal,currentPrice,maxAsk,maxBid}=analysis;
+    const isBuy=signal==='BUY', vol=dailyVolPct||2, tpMult=tfConfig.slMult*2.2;
+    const bufferTP=Math.max(0.2,vol/Math.sqrt(24/Math.max(1,tfConfig.slMult))*0.25);
+    let tpPrice=null,method='',reasoning='',confidence=0,layer=0;
+
+    if(isBuy&&maxAsk){
+        tpPrice=maxAsk.price*(1-bufferTP/100); method='Direnç Duvarı Önü'; layer=1;
+        confidence=Math.min(95,Math.round(60+(maxAsk.volume/Math.max(1,analysis.maxVolumeInLevel))*35));
+        const d=((maxAsk.price-currentPrice)/currentPrice*100).toFixed(2);
+        reasoning=[`📌 Yöntem: Direnç Duvarı Önü (Katman 1 — En Güvenilir)`,``,
+            `Yukarıda $${maxAsk.price.toLocaleString()} seviyesinde hacmi ${maxAsk.volume.toLocaleString(undefined,{maximumFractionDigits:1})} olan güçlü SATIŞ/DİRENÇ duvarı tespit edildi. Fiyatın %${d} üzerinde.`,``,
+            `📐 Neden bu seviye?`,`Büyük satış duvarları fiyatın üstüne çıkmasını zorlaştırır. Duvarın %${bufferTP.toFixed(1)} gerisine hedef koymak, tepe beklemenin riskini ortadan kaldırır.`,``,
+            `⚡ Kaldıraç tahmini: ${maxAsk.leverage}`].join('\n');
+    } else if(!isBuy&&maxBid){
+        tpPrice=maxBid.price*(1+bufferTP/100); method='Destek Duvarı Önü'; layer=1;
+        confidence=Math.min(95,Math.round(60+(maxBid.volume/Math.max(1,analysis.maxVolumeInLevel))*35));
+        const d=((currentPrice-maxBid.price)/currentPrice*100).toFixed(2);
+        reasoning=[`📌 Yöntem: Destek Duvarı Önü (Katman 1 — En Güvenilir)`,``,
+            `Aşağıda $${maxBid.price.toLocaleString()} seviyesinde hacmi ${maxBid.volume.toLocaleString(undefined,{maximumFractionDigits:1})} olan güçlü ALIM/DESTEK duvarı tespit edildi. Fiyatın %${d} altında.`,``,
+            `📐 Neden bu seviye?`,`Büyük alım duvarları düşüşü yavaşlatır. Duvarın %${bufferTP.toFixed(1)} üstüne hedef koymak optimum stratejidir.`,``,
+            `⚡ Kaldıraç tahmini: ${maxBid.leverage}`].join('\n');
+    }
+
+    if(!tpPrice){
+        const atrDist=(currentPrice*vol/100)*tpMult;
+        tpPrice=isBuy?currentPrice+atrDist:currentPrice-atrDist;
+        method='Volatilite Hedefi (ATR×2)'; confidence=52; layer=2;
+        reasoning=[`📌 Yöntem: Volatilite Bazlı Hedef (Katman 2 — Yedek)`,``,
+            `Belirgin karşı taraf likiditesi bulunamadı. 24s volatilite %${vol.toFixed(1)} × ${tpMult.toFixed(1)} çarpanıyla hesaplandı.`,``,
+            `⚠️ Daha güvenilir hedef için zaman dilimini büyütün veya Mesafe'yi artırın.`].join('\n');
+    }
+
+    let rrCorrected=false;
+    if(autoSL){
+        const slDist=Math.abs(autoSL.slPrice-currentPrice), tpDist=Math.abs(tpPrice-currentPrice);
+        if(tpDist<slDist){
+            tpPrice=isBuy?currentPrice+slDist*1.5:currentPrice-slDist*1.5;
+            rrCorrected=true; method+=' [RR Düzeltmeli]';
+            reasoning+='\n\n🔧 RR Düzeltmesi: Hedef SL mesafesinden kısa kaldığı için 1.5× uzağa taşındı.';
+        }
+    }
+    const tpDist2=Math.abs(tpPrice-currentPrice), tpPct=((tpDist2/currentPrice)*100).toFixed(2);
+    const slDist2=autoSL?Math.abs(autoSL.slPrice-currentPrice):tpDist2/2;
+    const rrRatio=(tpDist2/slDist2).toFixed(2);
+    return {tpPrice,tpPct,method,reasoning,rrRatio,confidence,layer,rrCorrected,bufferTP:bufferTP.toFixed(1)};
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   STOP LOSS
+═══════════════════════════════════════════════════════════════ */
+function calcStopLoss(analysis, tfConfig, dailyVolPct) {
+    if (!analysis||analysis.signal==='HOLD') return null;
+    const {signal,currentPrice,maxAsk,maxBid,targetPrice}=analysis;
+    const isBuy=signal==='BUY', vol=dailyVolPct||2;
+    const bufferPct=Math.max(0.3,vol/Math.sqrt(24/Math.max(1,tfConfig.slMult))*0.4);
+    const maxSlPct=Math.min(15,vol*tfConfig.slMult*1.5);
+    let slPrice=null,method='',reasoning='';
+
+    if(isBuy&&maxBid){
+        slPrice=maxBid.price*(1-bufferPct/100); method='Destek Duvarı';
+        reasoning=`AL sinyalinde stop loss, en güçlü ALIM duvarının ($${maxBid.price.toLocaleString()}) %${bufferPct.toFixed(1)} altına konumlandırıldı. Bu seviye kırılırsa alım baskısı tükenmiş demektir.`;
+    } else if(!isBuy&&maxAsk){
+        slPrice=maxAsk.price*(1+bufferPct/100); method='Direnç Duvarı';
+        reasoning=`SAT sinyalinde stop loss, en güçlü SATIŞ duvarının ($${maxAsk.price.toLocaleString()}) %${bufferPct.toFixed(1)} üstüne konumlandırıldı. Bu seviye kırılırsa satış baskısı tükenmiş demektir.`;
+    }
+    if(!slPrice){
+        const atr=currentPrice*vol/100;
+        slPrice=isBuy?currentPrice-atr*tfConfig.slMult:currentPrice+atr*tfConfig.slMult;
+        method='Volatilite (ATR Proxy)';
+        reasoning=`Referans duvar bulunamadı. 24s volatilite (%${vol.toFixed(1)}) × ${tfConfig.slMult} çarpanı kullanıldı.`;
+    }
+    const distPct=(Math.abs(slPrice-currentPrice)/currentPrice)*100;
+    if(distPct>maxSlPct){
+        slPrice=isBuy?currentPrice*(1-maxSlPct/100):currentPrice*(1+maxSlPct/100);
+        reasoning+=` (Maksimum %${maxSlPct.toFixed(1)} güvenlik sınırına çekildi.)`;
+    }
+    const slDist=Math.abs(slPrice-currentPrice);
+    const tpDist=targetPrice?Math.abs(targetPrice-currentPrice):slDist*2;
+    return {slPrice, slPct:((slDist/currentPrice)*100).toFixed(2), method, reasoning,
+            rrRatio:(tpDist/slDist).toFixed(2), bufferPct:bufferPct.toFixed(1)};
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   LİKİDİTE ANALİZİ
+═══════════════════════════════════════════════════════════════ */
+function analyzeLiquidity(orderBook, currentPrice, bucketSize, minVolume,
+                           proximityPct, signalStrengthPct, minProfitPct, isLive) {
+    const map=new Map(); let totalBid=0,totalAsk=0;
+    orderBook.bids.forEach(([p,q])=>{
+        const price=parseFloat(p),qty=parseFloat(q); totalBid+=qty;
+        const bucket=Math.floor(price/bucketSize)*bucketSize;
+        if(!map.has(bucket))map.set(bucket,{price:bucket,volume:0,type:'BID'});
+        map.get(bucket).volume+=qty;
+    });
+    orderBook.asks.forEach(([p,q])=>{
+        const price=parseFloat(p),qty=parseFloat(q); totalAsk+=qty;
+        const bucket=Math.floor(price/bucketSize)*bucketSize;
+        if(!map.has(bucket))map.set(bucket,{price:bucket,volume:0,type:'ASK'});
+        map.get(bucket).volume+=qty;
+    });
+    const levels=Array.from(map.values()).sort((a,b)=>a.price-b.price);
+    const maxVol=Math.max(...levels.map(l=>l.volume));
+    let maxAsk=null,maxBid=null;
+    levels.forEach(l=>{
+        if(l.volume<minVolume)return;
+        const diff=(Math.abs(l.price-currentPrice)/currentPrice)*100;
+        if(diff>proximityPct)return;
+        if(l.type==='ASK'&&(!maxAsk||l.volume>maxAsk.volume))maxAsk=l;
+        if(l.type==='BID'&&(!maxBid||l.volume>maxBid.volume))maxBid=l;
+    });
+    const term=isLive?'likidite':'tarihsel hacim';
+    const ratio=1+signalStrengthPct/100;
+    let signal='HOLD',reason=`Yeterli ${term} verisi yok veya eşik çok yüksek.`,target=null,confidence=0;
+    if(maxAsk&&maxBid){
+        const ar=maxAsk.volume/maxBid.volume, br=maxBid.volume/maxAsk.volume;
+        if(maxAsk.volume>maxBid.volume*ratio){signal='BUY';target=maxAsk.price;reason=`Yukarıda ($${maxAsk.price.toLocaleString()}) güçlü bir ${term} duvarı var.`;confidence=Math.min(99,Math.round((ar-1)*30+50));}
+        else if(maxBid.volume>maxAsk.volume*ratio){signal='SELL';target=maxBid.price;reason=`Aşağıda ($${maxBid.price.toLocaleString()}) güçlü bir ${term} duvarı var.`;confidence=Math.min(99,Math.round((br-1)*30+50));}
+        else{reason=`Yakın çevredeki ${term} dağılımı dengeli.`;}
+    } else if(maxAsk){signal='BUY';target=maxAsk.price;reason=`Sadece yukarıda önemli bir ${term} var.`;confidence=65;}
+    else if(maxBid){signal='SELL';target=maxBid.price;reason=`Sadece aşağıda önemli bir ${term} var.`;confidence=65;}
+    if(signal!=='HOLD'&&target){
+        const profPct=(Math.abs(target-currentPrice)/currentPrice)*100;
+        if(profPct<minProfitPct){signal='HOLD';target=null;confidence=0;reason=`Beklenen kâr (%${profPct.toFixed(2)}), minimum eşiğin altında → BEKLE.`;}
+    }
+    if(maxAsk)maxAsk.leverage=getLeverage(maxAsk.price,currentPrice);
+    if(maxBid)maxBid.leverage=getLeverage(maxBid.price,currentPrice);
+    return {levels,currentPrice,signal,signalReason:reason,targetPrice:target,maxAsk,maxBid,
+            totalBidVolume:totalBid,totalAskVolume:totalAsk,confidence,maxVolumeInLevel:maxVol,isLive};
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   TAKE PROFIT PANELİ
+═══════════════════════════════════════════════════════════════ */
+function TakeProfitPanel({analysis,tfConfig,dailyVolPct,autoSL,isDark,muted,borderCls,cardCls}){
+    const [isLocked,setIsLocked]=useState(true);
+    const [manualTP,setManualTP]=useState('');
+    const [showInfo,setShowInfo]=useState(false);
+    const autoTP=useMemo(()=>calcTakeProfit(analysis,tfConfig,dailyVolPct,autoSL),[analysis,tfConfig,dailyVolPct,autoSL]);
+    useEffect(()=>{if(autoTP)setManualTP(autoTP.tpPrice.toFixed(2));setIsLocked(true);setShowInfo(false);},[analysis?.signal,analysis?.currentPrice]);
+    const relColor={'Mükemmel':'text-emerald-400','Çok İyi':'text-teal-400','İyi':'text-sky-400','Orta':'text-yellow-400','Düşük':'text-rose-400'}[tfConfig.reliability]||'text-zinc-400';
+    if(!analysis||analysis.signal==='HOLD'||!autoTP)return(
+        <div className={cn("border p-4 rounded-3xl",cardCls,borderCls)}>
+            <h3 className={cn("font-bold text-[10px] uppercase tracking-widest flex items-center gap-2 mb-3",muted)}><StarIcon c="w-4 h-4"/> Take Profit</h3>
+            <div className={cn("rounded-xl p-4 text-center",isDark?"bg-zinc-800/30":"bg-slate-50")}><p className={cn("text-[10px]",muted)}>Aktif sinyal olmadığında<br/>Take Profit hesaplanmaz.</p></div>
+        </div>
+    );
+    const isBuy=analysis.signal==='BUY';
+    const displayTP=isLocked?autoTP.tpPrice:(parseFloat(manualTP)||autoTP.tpPrice);
+    const tpDist=Math.abs(displayTP-analysis.currentPrice);
+    const tpPct=((tpDist/analysis.currentPrice)*100).toFixed(2);
+    const slDist=autoSL?Math.abs(autoSL.slPrice-analysis.currentPrice):tpDist/2;
+    const displayRR=(tpDist/slDist).toFixed(2), rrVal=parseFloat(displayRR);
+    const rrColor=rrVal>=2?'text-emerald-500':rrVal>=1?'text-yellow-400':'text-rose-500';
+    const rrBg=rrVal>=2?'bg-emerald-500/10 border-emerald-500/20':rrVal>=1?'bg-yellow-500/10 border-yellow-500/20':'bg-rose-500/10 border-rose-500/20';
+    const confColor=autoTP.confidence>=75?'text-emerald-400':autoTP.confidence>=55?'text-yellow-400':'text-rose-400';
+    const numStep=analysis.currentPrice>1000?10:analysis.currentPrice>10?0.1:0.001;
+    const layerBadge=autoTP.layer===1?'bg-emerald-500/20 text-emerald-400 border-emerald-500/30':'bg-yellow-500/20 text-yellow-400 border-yellow-500/30';
+    return(
+        <div className={cn("border p-4 rounded-3xl slide-up",cardCls,borderCls)}>
+            <div className="flex items-center justify-between mb-3">
+                <h3 className={cn("font-bold text-[10px] uppercase tracking-widest flex items-center gap-2",muted)}>
+                    <StarIcon c="w-4 h-4 text-emerald-500"/>Take Profit
+                    <span className={cn("text-[8px] px-1.5 py-0.5 rounded border font-bold",layerBadge)}>{autoTP.method}</span>
+                </h3>
+                <button type="button" onClick={()=>setShowInfo(p=>!p)}
+                    className={cn("p-1.5 rounded-lg border transition-all",showInfo?"text-emerald-400 bg-emerald-500/15 border-emerald-500/30":isDark?"text-zinc-500 bg-zinc-800 border-zinc-700 hover:text-zinc-300":"text-slate-400 bg-slate-100 border-slate-200 hover:text-slate-600")}>
+                    <InfoIcon c="w-3.5 h-3.5"/>
+                </button>
+            </div>
+            {showInfo&&(<div className={cn("mb-4 rounded-2xl border p-4 fade-in",isDark?"bg-emerald-500/5 border-emerald-500/20":"bg-emerald-50 border-emerald-200")}>
+                <div className="flex items-center gap-2 mb-3">
+                    <div className={cn("w-6 h-6 rounded-lg flex items-center justify-center shrink-0",isDark?"bg-emerald-500/20":"bg-emerald-100")}><StarIcon c="w-3.5 h-3.5 text-emerald-500"/></div>
+                    <p className={cn("font-bold text-xs",isDark?"text-emerald-300":"text-emerald-800")}>🎯 Take Profit — Neden Bu Seviye?</p>
+                </div>
+                <div className={cn("text-[11px] leading-[1.75] space-y-1",isDark?"text-emerald-100/85":"text-emerald-900/80")}>
+                    {autoTP.reasoning.split('\n').map((line,i)=>line.trim()===''?<div key={i} className="h-1"/>:<p key={i}>{line}</p>)}
+                </div>
+                {!isLocked&&(<div className={cn("mt-3 pt-3 border-t flex items-start gap-2 text-[10px]",isDark?"border-emerald-500/20 text-yellow-300":"border-emerald-200 text-yellow-700")}><AlertCircle c="w-3.5 h-3.5 shrink-0 mt-0.5"/><span className="font-semibold">Manuel mod aktif.</span></div>)}
+            </div>)}
+            <div className={cn("rounded-xl border p-3 mb-3",isDark?"bg-emerald-500/5 border-emerald-500/20":"bg-emerald-50 border-emerald-200")}>
+                <div className="flex items-center justify-between mb-2">
+                    <span className="text-[9px] font-bold uppercase tracking-wider text-emerald-500">{isBuy?'↑ Hedef (Alış)':'↓ Hedef (Satış)'}</span>
+                    <button type="button" onClick={()=>{setIsLocked(p=>!p);if(isLocked)setManualTP(autoTP.tpPrice.toFixed(2));}}
+                        className={cn("flex items-center gap-1 text-[8px] font-bold px-2 py-0.5 rounded-lg transition-all",isLocked?"bg-indigo-500/20 text-indigo-400 hover:bg-indigo-500/30":"bg-yellow-500/20 text-yellow-400 hover:bg-yellow-500/30")}>
+                        {isLocked?<><Lock c="w-2.5 h-2.5"/>Otomatik</>:<><Unlock c="w-2.5 h-2.5"/>Manuel</>}
+                    </button>
+                </div>
+                {isLocked?(<div className="flex items-baseline gap-2"><span className="text-2xl font-bold font-mono text-emerald-500">${fmtP(autoTP.tpPrice,2)}</span><span className={cn("text-xs font-mono font-bold",isBuy?"text-emerald-500":"text-rose-500")}>{isBuy?'+':'-'}{tpPct}%</span></div>)
+                :(<div className="flex items-center gap-2"><span className="text-emerald-500 font-bold text-sm shrink-0">$</span>
+                    <input type="number" value={manualTP} onChange={e=>setManualTP(e.target.value)} step={numStep}
+                        className={cn("flex-1 min-w-0 text-xl font-bold font-mono bg-transparent outline-none border-b-2 border-emerald-500/50 focus:border-emerald-500 transition-colors text-emerald-400 pb-0.5 no-spin")} placeholder={autoTP.tpPrice.toFixed(2)}/>
+                    <span className={cn("text-xs font-mono font-bold shrink-0",isBuy?"text-emerald-500":"text-rose-500")}>{isBuy?'+':'-'}{tpPct}%</span></div>)}
+            </div>
+            <div className="grid grid-cols-3 gap-2 mb-2">
+                <div className={cn("rounded-lg border p-2 text-center",rrBg)}><p className={cn("text-[8px] font-bold uppercase tracking-wider mb-0.5",muted)}>R/R Oranı</p><p className={cn("text-sm font-bold font-mono",rrColor)}>{displayRR}</p></div>
+                <div className={cn("rounded-lg border p-2 text-center",isDark?"bg-zinc-800/30 border-zinc-700/30":"bg-slate-50 border-slate-200")}><p className={cn("text-[8px] font-bold uppercase tracking-wider mb-0.5",muted)}>Güven</p><p className={cn("text-sm font-bold font-mono",confColor)}>%{autoTP.confidence}</p></div>
+                <div className={cn("rounded-lg border p-2 text-center",isDark?"bg-zinc-800/30 border-zinc-700/30":"bg-slate-50 border-slate-200")}><p className={cn("text-[8px] font-bold uppercase tracking-wider mb-0.5",muted)}>Güvenilirlik</p><p className={cn("text-[10px] font-bold",relColor)}>{tfConfig.reliability}</p></div>
+            </div>
+            {rrVal>=2&&(<div className={cn("p-2 rounded-lg border text-[9px] flex items-start gap-1.5 fade-in",isDark?"bg-emerald-500/5 border-emerald-500/20 text-emerald-300":"bg-emerald-50 border-emerald-200 text-emerald-700")}><CheckCircle2 c="w-3 h-3 shrink-0 mt-0.5"/><span>R/R güçlü ({displayRR}x)</span></div>)}
+            {rrVal>=1&&rrVal<1.5&&(<div className={cn("p-2 rounded-lg border text-[9px] flex items-start gap-1.5 fade-in",isDark?"bg-yellow-500/5 border-yellow-500/20 text-yellow-300":"bg-yellow-50 border-yellow-200 text-yellow-700")}><AlertCircle c="w-3 h-3 shrink-0 mt-0.5"/><span>R/R zayıf ({displayRR}x) — hedefi uzatmayı değerlendirin.</span></div>)}
+            {rrVal<1&&(<div className={cn("p-2 rounded-lg border text-[9px] flex items-start gap-1.5 fade-in",isDark?"bg-rose-500/5 border-rose-500/20 text-rose-300":"bg-rose-50 border-rose-200 text-rose-700")}><AlertCircle c="w-3 h-3 shrink-0 mt-0.5"/><span>R/R 1'in altında — dezavantajlı işlem.</span></div>)}
+        </div>
+    );
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   STOP LOSS PANELİ
+═══════════════════════════════════════════════════════════════ */
+function StopLossPanel({analysis,tfConfig,dailyVolPct,isDark,muted,borderCls,cardCls}){
+    const [isLocked,setIsLocked]=useState(true);
+    const [manualSL,setManualSL]=useState('');
+    const [showInfo,setShowInfo]=useState(false);
+    const autoSL=useMemo(()=>calcStopLoss(analysis,tfConfig,dailyVolPct),[analysis,tfConfig,dailyVolPct]);
+    useEffect(()=>{if(autoSL)setManualSL(autoSL.slPrice.toFixed(2));setIsLocked(true);setShowInfo(false);},[analysis?.signal,analysis?.currentPrice]);
+    const relColor={'Mükemmel':'text-emerald-400','Çok İyi':'text-teal-400','İyi':'text-sky-400','Orta':'text-yellow-400','Düşük':'text-rose-400'}[tfConfig.reliability]||'text-zinc-400';
+    if(!analysis||analysis.signal==='HOLD'||!autoSL)return(
+        <div className={cn("border p-4 rounded-3xl",cardCls,borderCls)}>
+            <h3 className={cn("font-bold text-[10px] uppercase tracking-widest flex items-center gap-2 mb-3",muted)}><StopCircle c="w-4 h-4"/> Stop Loss</h3>
+            <div className={cn("rounded-xl p-4 text-center",isDark?"bg-zinc-800/30":"bg-slate-50")}><p className={cn("text-[10px]",muted)}>Aktif sinyal olmadığında<br/>Stop Loss hesaplanmaz.</p></div>
+        </div>
+    );
+    const isBuy=analysis.signal==='BUY';
+    const displaySL=isLocked?autoSL.slPrice:(parseFloat(manualSL)||autoSL.slPrice);
+    const slDist=Math.abs(displaySL-analysis.currentPrice);
+    const slPct=((slDist/analysis.currentPrice)*100).toFixed(2);
+    const tpDist=analysis.targetPrice?Math.abs(analysis.targetPrice-analysis.currentPrice):null;
+    const displayRR=tpDist?(tpDist/slDist).toFixed(2):autoSL.rrRatio, rrVal=parseFloat(displayRR);
+    const rrColor=rrVal>=2?'text-emerald-500':rrVal>=1?'text-yellow-400':'text-rose-500';
+    const rrBg=rrVal>=2?'bg-emerald-500/10 border-emerald-500/20':rrVal>=1?'bg-yellow-500/10 border-yellow-500/20':'bg-rose-500/10 border-rose-500/20';
+    const numStep=analysis.currentPrice>1000?10:analysis.currentPrice>10?0.1:0.001;
+    return(
+        <div className={cn("border p-4 rounded-3xl slide-up",cardCls,borderCls)}>
+            <div className="flex items-center justify-between mb-3">
+                <h3 className={cn("font-bold text-[10px] uppercase tracking-widest flex items-center gap-2",muted)}>
+                    <StopCircle c="w-4 h-4 text-orange-500"/>Stop Loss
+                    <span className={cn("text-[8px] px-1.5 py-0.5 rounded font-bold",isDark?"bg-zinc-700 text-zinc-300":"bg-slate-200 text-slate-500")}>{autoSL.method}</span>
+                </h3>
+                <button type="button" onClick={()=>setShowInfo(p=>!p)}
+                    className={cn("p-1.5 rounded-lg border transition-all",showInfo?"text-orange-400 bg-orange-500/15 border-orange-500/30":isDark?"text-zinc-500 bg-zinc-800 border-zinc-700 hover:text-zinc-300":"text-slate-400 bg-slate-100 border-slate-200 hover:text-slate-600")}>
+                    <InfoIcon c="w-3.5 h-3.5"/>
+                </button>
+            </div>
+            {showInfo&&(<div className={cn("mb-4 rounded-2xl border p-4 fade-in",isDark?"bg-orange-500/5 border-orange-500/20":"bg-orange-50 border-orange-200")}>
+                <div className="flex items-center gap-2 mb-3">
+                    <div className={cn("w-6 h-6 rounded-lg flex items-center justify-center shrink-0",isDark?"bg-orange-500/20":"bg-orange-100")}><StopCircle c="w-3.5 h-3.5 text-orange-500"/></div>
+                    <p className={cn("font-bold text-xs",isDark?"text-orange-300":"text-orange-800")}>🛡️ Stop Loss — Neden Bu Seviye?</p>
+                </div>
+                <div className={cn("text-[11px] leading-[1.75]",isDark?"text-orange-100/85":"text-orange-900/80")}><p>{autoSL.reasoning}</p></div>
+                {!isLocked&&(<div className={cn("mt-3 pt-3 border-t flex items-start gap-2 text-[10px]",isDark?"border-orange-500/20 text-yellow-300":"border-orange-200 text-yellow-700")}><AlertCircle c="w-3.5 h-3.5 shrink-0 mt-0.5"/><span className="font-semibold">Manuel mod aktif.</span></div>)}
+            </div>)}
+            <div className={cn("rounded-xl border p-3 mb-3",isDark?"bg-orange-500/5 border-orange-500/20":"bg-orange-50 border-orange-200")}>
+                <div className="flex items-center justify-between mb-2">
+                    <span className="text-[9px] font-bold uppercase tracking-wider text-orange-500">{isBuy?'↓ Stop (Alış)':'↑ Stop (Satış)'}</span>
+                    <button type="button" onClick={()=>{setIsLocked(p=>!p);if(isLocked)setManualSL(autoSL.slPrice.toFixed(2));}}
+                        className={cn("flex items-center gap-1 text-[8px] font-bold px-2 py-0.5 rounded-lg transition-all",isLocked?"bg-indigo-500/20 text-indigo-400 hover:bg-indigo-500/30":"bg-yellow-500/20 text-yellow-400 hover:bg-yellow-500/30")}>
+                        {isLocked?<><Lock c="w-2.5 h-2.5"/>Otomatik</>:<><Unlock c="w-2.5 h-2.5"/>Manuel</>}
+                    </button>
+                </div>
+                {isLocked?(<div className="flex items-baseline gap-2"><span className="text-2xl font-bold font-mono text-orange-500">${fmtP(autoSL.slPrice,2)}</span><span className={cn("text-xs font-mono font-bold",isBuy?"text-rose-500":"text-emerald-500")}>{isBuy?'-':'+'}{slPct}%</span></div>)
+                :(<div className="flex items-center gap-2"><span className="text-orange-500 font-bold text-sm shrink-0">$</span>
+                    <input type="number" value={manualSL} onChange={e=>setManualSL(e.target.value)} step={numStep}
+                        className={cn("flex-1 min-w-0 text-xl font-bold font-mono bg-transparent outline-none border-b-2 border-orange-500/50 focus:border-orange-500 transition-colors text-orange-400 pb-0.5 no-spin")} placeholder={autoSL.slPrice.toFixed(2)}/>
+                    <span className={cn("text-xs font-mono font-bold shrink-0",isBuy?"text-rose-500":"text-emerald-500")}>{isBuy?'-':'+'}{slPct}%</span></div>)}
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+                <div className={cn("rounded-lg border p-2 text-center",rrBg)}><p className={cn("text-[8px] font-bold uppercase tracking-wider mb-0.5",muted)}>R/R Oranı</p><p className={cn("text-sm font-bold font-mono",rrColor)}>{displayRR}</p></div>
+                <div className={cn("rounded-lg border p-2 text-center",isDark?"bg-zinc-800/30 border-zinc-700/30":"bg-slate-50 border-slate-200")}><p className={cn("text-[8px] font-bold uppercase tracking-wider mb-0.5",muted)}>Risk %</p><p className="text-sm font-bold font-mono text-rose-400">{slPct}%</p></div>
+                <div className={cn("rounded-lg border p-2 text-center",isDark?"bg-zinc-800/30 border-zinc-700/30":"bg-slate-50 border-slate-200")}><p className={cn("text-[8px] font-bold uppercase tracking-wider mb-0.5",muted)}>Güvenilirlik</p><p className={cn("text-[10px] font-bold",relColor)}>{tfConfig.reliability}</p></div>
+            </div>
+            {rrVal<1.5&&(<div className={cn("mt-2 p-2 rounded-lg border text-[9px] flex items-start gap-1.5 fade-in",isDark?"bg-yellow-500/5 border-yellow-500/20 text-yellow-300":"bg-yellow-50 border-yellow-200 text-yellow-700")}><AlertCircle c="w-3 h-3 shrink-0 mt-0.5"/><span>R/R 1.5 altında — stop'u daraltmayı değerlendirin.</span></div>)}
+        </div>
+    );
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   GRAFİK AÇIKLAMA KUTUSU (renk rehberi)
+═══════════════════════════════════════════════════════════════ */
+function ChartLegend({ signal, isDark, muted }) {
+    const items = useMemo(() => {
+        if (signal === 'BUY') return [
+            { color: '#38bdf8', label: 'Hedef (Direnç Duvarı)', desc: 'Fiyatın ulaşması beklenen ASK seviyesi' },
+            { color: '#ef4444', label: 'Satış / Direnç Bölgesi', desc: 'Fiyatın üstündeki ASK emirleri' },
+            { color: '#22c55e', label: 'Alış / Destek Bölgesi', desc: 'Fiyatı destekleyen BID emirleri' },
+            { color: '#166534', label: 'Eşik Altı (Gürültü)', desc: 'Min. hacmin altında, anlamsız emirler', faint: true },
+        ];
+        if (signal === 'SELL') return [
+            { color: '#fb923c', label: 'Hedef (Destek Duvarı)', desc: 'Fiyatın ulaşması beklenen BID seviyesi' },
+            { color: '#22c55e', label: 'Alış / Destek Bölgesi', desc: 'Fiyatın altındaki BID emirleri' },
+            { color: '#ef4444', label: 'Satış / Direnç Bölgesi', desc: 'Fiyatın üstündeki ASK emirleri' },
+            { color: '#7f1d1d', label: 'Eşik Altı (Gürültü)', desc: 'Min. hacmin altında, anlamsız emirler', faint: true },
+        ];
+        return [
+            { color: '#22c55e', label: 'Alış Emirleri (BID)', desc: 'Fiyatın altındaki alış emirleri' },
+            { color: '#ef4444', label: 'Satış Emirleri (ASK)', desc: 'Fiyatın üstündeki satış emirleri' },
+            { color: '#166534', label: 'Eşik Altı (Gürültü)', desc: 'Min. hacmin altında emirler', faint: true },
+        ];
+    }, [signal]);
+
+    return (
+        <div className={cn("flex flex-wrap gap-x-3 gap-y-1 mt-1")}>
+            {items.map((item, i) => (
+                <div key={i} className="flex items-center gap-1.5">
+                    <div className="w-2.5 h-2.5 rounded-sm shrink-0 border"
+                        style={{
+                            backgroundColor: item.color,
+                            opacity: item.faint ? 0.5 : 1,
+                            borderColor: item.color + '60',
+                        }}/>
+                    <span className={cn("text-[9px] font-medium", item.faint ? 'opacity-50' : '', muted)}>
+                        {item.label}
+                    </span>
+                </div>
+            ))}
+        </div>
+    );
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   ANA UYGULAMA
+═══════════════════════════════════════════════════════════════ */
+function App() {
+    const [symbol,      setSymbol]      = useState('BTCUSDT');
+    const [timeframe,   setTimeframe]   = useState('4h');
+    const [isDark,      setIsDark]      = useLocalStorage('liqmap_dark', true);
+    const [soundOn,     setSoundOn]     = useLocalStorage('liqmap_sound', false);
+    const [history,     setHistory]     = useLocalStorage('liqmap_history', []);
+    const [rawData,     setRawData]     = useState(null);
+    const [loading,     setLoading]     = useState(true);
+    const [connStatus,  setConnStatus]  = useState('connected');
+    const [lastUpdated, setLastUpdated] = useState(new Date());
+    const [countdown,   setCountdown]   = useState(30);
+    const [activeInfo,  setActiveInfo]  = useState(null);
+    const [retryCount,  setRetryCount]  = useState(0);
+    const [dailyVolPct, setDailyVolPct] = useState(2);
+    const [toast,       setToast]       = useState(null);
+    const bellRef       = useRef(null);
+    const prevSignalRef = useRef('HOLD');
+    const { play, initCtx, audioReady } = useAudio();
+
+    const config   = COIN_CONFIGS[symbol];
+    const tfConfig = useMemo(()=>TIMEFRAMES.find(t=>t.id===timeframe)||TIMEFRAMES[4],[timeframe]);
+
+    const [minVolume,   setMinVolume]   = useState(()=>config.defaultVol*tfConfig.volMult);
+    const [proximity,   setProximity]   = useState(()=>tfConfig.defProx);
+    const [sigStrength, setSigStrength] = useState(20);
+    const [minProfit,   setMinProfit]   = useState(()=>tfConfig.defProf);
+
+    const dMinVol  = useDebounce(minVolume,  300);
+    const dProx    = useDebounce(proximity,  300);
+    const dSigStr  = useDebounce(sigStrength,300);
+    const dMinProf = useDebounce(minProfit,  300);
+
+    const handleSoundToggle = useCallback(()=>{
+        initCtx();
+        setSoundOn(p=>{
+            const next=!p;
+            if(next)setTimeout(()=>play('TEST'),100);
+            return next;
+        });
+        if(bellRef.current){
+            bellRef.current.classList.remove('bell-shake');
+            void bellRef.current.offsetWidth;
+            bellRef.current.classList.add('bell-shake');
+            setTimeout(()=>bellRef.current?.classList.remove('bell-shake'),700);
+        }
+    },[initCtx,play,setSoundOn]);
+
+    const fetchData = useCallback(async()=>{
+        setConnStatus('reconnecting');
+        try{
+            const [currentPrice,ticker]=await Promise.all([apiPrice(symbol),api24h(symbol)]);
+            const high24=parseFloat(ticker.highPrice),low24=parseFloat(ticker.lowPrice);
+            setDailyVolPct(((high24-low24)/currentPrice)*100);
+            let orderBook;
+            if(timeframe==='LIVE'){
+                orderBook=await apiOrderBook(symbol,1000);
+            } else {
+                const klines=await apiKlines(symbol,timeframe);
+                const bSize=config.bucketSize*tfConfig.buckMult;
+                const profile=new Map();
+                klines.forEach(c=>{
+                    const high=parseFloat(c[2]),low=parseFloat(c[3]),vol=parseFloat(c[5]);
+                    const sB=Math.floor(low/bSize)*bSize,eB=Math.floor(high/bSize)*bSize;
+                    const nB=Math.max(1,Math.round((eB-sB)/bSize)+1),vPB=vol/nB;
+                    for(let b=sB;b<=eB;b+=bSize)profile.set(b,(profile.get(b)||0)+vPB);
+                });
+                orderBook={bids:[],asks:[]};
+                profile.forEach((v,p)=>{
+                    if(p>=currentPrice)orderBook.asks.push([p.toString(),v.toString()]);
+                    else orderBook.bids.push([p.toString(),v.toString()]);
+                });
+            }
+            setRawData({currentPrice,orderBook});
+            setLastUpdated(new Date()); setConnStatus('connected'); setRetryCount(0); setCountdown(30);
+        }catch(err){console.error('Fetch:',err);setConnStatus('error');setRetryCount(p=>p+1);}
+        finally{setLoading(false);}
+    },[symbol,timeframe,config.bucketSize,tfConfig.buckMult]);
+
+    useEffect(()=>{setMinVolume(config.defaultVol*tfConfig.volMult);setProximity(tfConfig.defProx);setMinProfit(tfConfig.defProf);prevSignalRef.current='HOLD';setLoading(true);fetchData();},[symbol,timeframe]); // eslint-disable-line
+    useEffect(()=>{const iv=setInterval(fetchData,30000);return()=>clearInterval(iv);},[fetchData]);
+    useEffect(()=>{const iv=setInterval(()=>setCountdown(p=>p<=1?30:p-1),1000);return()=>clearInterval(iv);},[lastUpdated]);
+    useEffect(()=>{if(connStatus==='error'&&retryCount>0&&retryCount<=3){const t=setTimeout(fetchData,5000*retryCount);return()=>clearTimeout(t);}},[connStatus,retryCount,fetchData]);
+    useEffect(()=>{const h=()=>{if(document.visibilityState==='visible')fetchData();};document.addEventListener('visibilitychange',h);return()=>document.removeEventListener('visibilitychange',h);},[fetchData]);
+    useEffect(()=>{const send=()=>{if(window.parent!==window)window.parent.postMessage({type:'resize',height:document.documentElement.scrollHeight},'*');};const obs=new ResizeObserver(send);obs.observe(document.documentElement);return()=>obs.disconnect();},[]);
+
+    const analysis=useMemo(()=>{
+        if(!rawData)return null;
+        return analyzeLiquidity(rawData.orderBook,rawData.currentPrice,config.bucketSize*tfConfig.buckMult,dMinVol,dProx,dSigStr,dMinProf,timeframe==='LIVE');
+    },[rawData,dMinVol,dProx,dSigStr,dMinProf,config.bucketSize,tfConfig.buckMult,timeframe]);
+
+    const autoSL=useMemo(()=>calcStopLoss(analysis,tfConfig,dailyVolPct),[analysis,tfConfig,dailyVolPct]);
+
+    useEffect(()=>{
+        if(!analysis)return;
+        const sig=analysis.signal;
+        if(sig!=='HOLD'&&sig!==prevSignalRef.current){
+            const entry={id:Date.now(),time:new Date(),symbol,signal:sig,price:analysis.currentPrice,target:analysis.targetPrice,conf:analysis.confidence};
+            setHistory(p=>[entry,...p].slice(0,10));
+            if(soundOn&&audioReady){
+                play(sig);
+                if(bellRef.current){bellRef.current.classList.remove('bell-shake','ring-pulse');void bellRef.current.offsetWidth;bellRef.current.classList.add('bell-shake','ring-pulse');setTimeout(()=>bellRef.current?.classList.remove('bell-shake','ring-pulse'),1500);}
+            }
+            setToast({...entry});
+        }
+        prevSignalRef.current=sig;
+    },[analysis,symbol,soundOn,audioReady,play]); // eslint-disable-line
+
+    /* ═══════════════════════════════════════════════════════
+       CHART DATA — artık getBarColor kullanıyor
+    ═══════════════════════════════════════════════════════ */
+    const chartData = useMemo(()=>{
+        if(!analysis)return[];
+        const rm=dProx/100;
+        const maxAskPrice=analysis.maxAsk?.price;
+        const maxBidPrice=analysis.maxBid?.price;
+        const signal=analysis.signal;
+
+        return analysis.levels
+            .filter(l=>l.price>=analysis.currentPrice*(1-rm)&&l.price<=analysis.currentPrice*(1+rm))
+            .map(l=>{
+                const colorInfo = getBarColor(l, signal, maxAskPrice, maxBidPrice, dMinVol);
+                return {
+                    price: l.price,
+                    volume: l.volume,
+                    type: l.type,
+                    fill: colorInfo.fill,
+                    opacity: colorInfo.opacity,
+                    isTarget: colorInfo.isTarget,
+                };
+            });
+    },[analysis,dProx,dMinVol]);
+
+    const bg        = isDark?'bg-[#0a0a0a]'  :'bg-slate-50';
+    const txt       = isDark?'text-zinc-100'  :'text-slate-900';
+    const muted     = isDark?'text-zinc-400'  :'text-slate-500';
+    const cardCls   = isDark?'bg-zinc-900/50' :'bg-white shadow-sm';
+    const borderCls = isDark?'border-zinc-800':'border-slate-200';
+    const inputBg   = isDark?'bg-zinc-800/50' :'bg-slate-100';
+    const rangeBg   = isDark?'bg-zinc-700'    :'bg-slate-300';
+
+    const totalVol=analysis?analysis.totalBidVolume+analysis.totalAskVolume:1;
+    const bidPct  =analysis?(analysis.totalBidVolume/totalVol)*100:50;
+    const askPct  =analysis?(analysis.totalAskVolume/totalVol)*100:50;
+    const profStep=tfConfig.maxProf>=20?1:tfConfig.maxProf>=10?0.5:0.1;
+    const shortTF =timeframe==='LIVE'||timeframe==='5m';
+
+    const relBadge={
+        'Mükemmel':'text-emerald-400 bg-emerald-500/10 border-emerald-500/20',
+        'Çok İyi': 'text-teal-400 bg-teal-500/10 border-teal-500/20',
+        'İyi':     'text-sky-400 bg-sky-500/10 border-sky-500/20',
+        'Orta':    'text-yellow-400 bg-yellow-500/10 border-yellow-500/20',
+        'Düşük':   'text-rose-400 bg-rose-500/10 border-rose-500/20',
+    }[tfConfig.reliability]||'text-zinc-400 bg-zinc-700 border-zinc-600';
+
+    const infoTexts={
+        proximity:'Mevcut fiyata olan maksimum uzaklığı belirler. Sadece bu yüzdelik dilim içindeki seviyeler analiz edilir.',
+        strength: 'Sinyalin geçerli sayılması için bir tarafın diğerinden yüzde kaç daha büyük olması gerektiğini belirler.',
+        volume:   'Analize dahil edilecek minimum hacim eşiğini belirler. Sahte emirleri filtreler.',
+        profit:   'Hedeflenen minimum kâr marjını belirler. Bu yüzdenin altında BEKLE durumuna geçer.',
+    };
+    const sliders=[
+        {key:'proximity',label:'Mesafe',val:`±${proximity}%`,min:1,max:tfConfig.maxProx,step:1,current:proximity,setter:setProximity,parse:parseInt},
+        {key:'strength',label:'Fark',val:`%${sigStrength}`,min:5,max:100,step:5,current:sigStrength,setter:setSigStrength,parse:parseInt},
+        {key:'volume',label:'Eşik',val:minVolume>1000?(minVolume/1000).toFixed(1)+'k':minVolume,min:config.step*tfConfig.volMult,max:config.maxVol*tfConfig.volMult,step:config.step*tfConfig.volMult,current:minVolume,setter:setMinVolume,parse:parseInt},
+        {key:'profit',label:'Min Kâr',val:`%${minProfit.toFixed(profStep<1?1:0)}`,min:profStep,max:tfConfig.maxProf,step:profStep,current:minProfit,setter:setMinProfit,parse:parseFloat},
+    ];
+
+    const currentSignal = analysis?.signal || 'HOLD';
+
+    return (
+        <div className={cn("min-h-screen font-sans transition-colors duration-300 pb-10",bg,txt)}>
+
+            {/* HEADER */}
+            <header className={cn("border-b sticky top-0 z-50 backdrop-blur-md",isDark?'border-zinc-800/50 bg-zinc-900/30':'border-slate-200 bg-white/70')}>
+                <div className="max-w-7xl mx-auto px-3 sm:px-4 h-16 flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 shrink-0">
+                        <div className="w-8 h-8 bg-indigo-500 rounded-xl flex items-center justify-center shadow-lg shadow-indigo-500/20"><Magnet c="text-white w-4 h-4"/></div>
+                        <div className="hidden sm:block"><h1 className="font-bold text-base leading-tight">LiqMap Pro</h1><p className="text-[9px] font-mono uppercase tracking-widest text-indigo-400">Akıllı Isı Haritası</p></div>
+                    </div>
+                    <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap justify-end">
+                        <div className="relative">
+                            <select value={symbol} onChange={e=>setSymbol(e.target.value)} className={cn("appearance-none pl-2.5 pr-6 py-1.5 rounded-xl font-bold font-mono text-xs border focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer",isDark?"bg-zinc-800 border-zinc-700 text-white":"bg-slate-100 border-slate-200 text-slate-900")}>
+                                {Object.keys(COIN_CONFIGS).map(s=><option key={s} value={s}>{s.replace('USDT','')}</option>)}
+                            </select>
+                            <ChevronDown c={cn("absolute right-1.5 top-1/2 -translate-y-1/2 w-3 h-3 pointer-events-none",muted)}/>
+                        </div>
+                        <div className="relative">
+                            <select value={timeframe} onChange={e=>setTimeframe(e.target.value)} className={cn("appearance-none pl-2.5 pr-6 py-1.5 rounded-xl font-bold font-mono text-xs border focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer",isDark?"bg-zinc-800 border-indigo-500/50 text-indigo-400":"bg-indigo-50 border-indigo-200 text-indigo-600")}>
+                                {TIMEFRAMES.map(tf=><option key={tf.id} value={tf.id}>{tf.label}</option>)}
+                            </select>
+                            <ChevronDown c={cn("absolute right-1.5 top-1/2 -translate-y-1/2 w-3 h-3 pointer-events-none",isDark?"text-indigo-400":"text-indigo-500")}/>
+                        </div>
+                        <span className={cn("text-[8px] font-bold px-2 py-0.5 rounded-full border hidden sm:inline",relBadge)}>{tfConfig.reliability}</span>
+                        <div className={cn("w-2 h-2 rounded-full shrink-0",connStatus==='connected'?'bg-emerald-500 pulse-dot':connStatus==='reconnecting'?'bg-yellow-400 spin-slow':'bg-rose-500')}/>
+                        <div className="relative">
+                            <button ref={bellRef} type="button" onClick={handleSoundToggle}
+                                title={soundOn?(audioReady?'Ses açık':'Ses açık, izin bekleniyor'):'Ses kapalı'}
+                                className={cn("p-1.5 rounded-full transition-all duration-200 relative",soundOn&&audioReady?"text-indigo-400 bg-indigo-500/15 ring-1 ring-indigo-500/40":soundOn&&!audioReady?"text-yellow-400 bg-yellow-500/15 ring-1 ring-yellow-500/40":muted+" hover:bg-slate-500/10")}>
+                                {soundOn?<Volume2 c="w-4 h-4"/>:<VolumeX c="w-4 h-4"/>}
+                                {soundOn&&audioReady&&<span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-emerald-400 rounded-full border border-zinc-900 pulse-dot"/>}
+                                {soundOn&&!audioReady&&<span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-yellow-400 rounded-full border border-zinc-900"/>}
+                            </button>
+                        </div>
+                        <button onClick={()=>setIsDark(!isDark)} className={cn("p-1.5 rounded-full transition-colors hover:bg-slate-500/10 hidden sm:block",muted)}>{isDark?<Sun c="w-4 h-4"/>:<Moon c="w-4 h-4"/>}</button>
+                        <button onClick={fetchData} disabled={loading} className={cn("p-1.5 rounded-full transition-colors hover:bg-slate-500/10",muted,loading&&'opacity-40 cursor-not-allowed')}><RefreshCw c={cn("w-4 h-4",loading&&'spin-slow')}/></button>
+                    </div>
+                </div>
+            </header>
+
+            <NotificationToast toast={toast} onDismiss={()=>setToast(null)} isDark={isDark}/>
+
+            <main className="max-w-7xl mx-auto px-2 sm:px-4 py-4 sm:py-6">
+                {connStatus==='error'&&(<div className="mb-4 fade-in bg-rose-500/10 border border-rose-500/20 p-3 rounded-xl flex items-center gap-3 text-rose-500 text-xs font-medium"><WifiOff c="w-4 h-4 flex-shrink-0"/><p>Bağlantı hatası. {retryCount<=3?` ${5*retryCount}sn sonra tekrar deneniyor... (${retryCount}/3)`:'Lütfen sayfayı yenileyin.'}</p></div>)}
+                {shortTF&&(<div className={cn("mb-4 fade-in p-3 rounded-xl border flex items-start gap-2.5 text-[10px]",isDark?"bg-yellow-500/5 border-yellow-500/20 text-yellow-300":"bg-yellow-50 border-yellow-200 text-yellow-700")}><AlertCircle c="w-4 h-4 shrink-0 mt-0.5"/><div><span className="font-bold">Kısa vadeli zaman dilimi. </span>Sinyal güvenilirliği düşüktür. <span className="font-bold text-yellow-400">4 Saat veya 24 Saat</span> deneyin.</div></div>)}
+
+                {/* ÖZET KARTLAR */}
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3 mb-4">
+                    <div className={cn("p-3 sm:p-4 rounded-2xl border",cardCls,borderCls)}>
+                        <p className={cn("text-[9px] font-medium uppercase tracking-wider mb-1",muted)}>{config.name}</p>
+                        <h2 className="text-lg sm:text-2xl font-bold font-mono tracking-tighter">${analysis?.currentPrice.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:4})||'---'}</h2>
+                        <p className={cn("text-[8px] mt-1 font-mono",muted)}>24s Vol: <span className="text-indigo-400">%{dailyVolPct.toFixed(1)}</span></p>
+                    </div>
+                    <div className={cn("p-3 sm:p-4 rounded-2xl border relative overflow-hidden",cardCls,borderCls)}>
+                        {analysis?.confidence>0&&<div className="absolute -right-4 -top-4 w-20 h-20 bg-indigo-500/10 rounded-full blur-2xl pointer-events-none"/>}
+                        <div className="flex justify-between items-start mb-2">
+                            <p className={cn("text-[9px] font-medium uppercase tracking-wider",muted)}>Sinyal</p>
+                            {analysis?.confidence>0&&<div className="flex items-center gap-1 text-[8px] font-bold text-indigo-400 bg-indigo-500/10 px-1.5 py-0.5 rounded"><Shield c="w-2.5 h-2.5"/> %{analysis.confidence}</div>}
+                        </div>
+                        <div className={cn("px-2 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest flex items-center gap-1.5 w-fit",
+                            analysis?.signal==='BUY'?"bg-emerald-500/20 text-emerald-500 border border-emerald-500/30":analysis?.signal==='SELL'?"bg-rose-500/20 text-rose-500 border border-rose-500/30":isDark?"bg-zinc-800 text-zinc-400 border border-zinc-700":"bg-slate-200 text-slate-500 border border-slate-300")}>
+                            {analysis?.signal==='BUY'&&<TrendingUp c="w-3 h-3"/>}{analysis?.signal==='SELL'&&<TrendingDown c="w-3 h-3"/>}{analysis?.signal==='HOLD'&&<Activity c="w-3 h-3"/>}
+                            {analysis?.signal==='BUY'?'AL':analysis?.signal==='SELL'?'SAT':'BEKLE'}
+                        </div>
+                    </div>
+                    <div className={cn("p-3 sm:p-4 rounded-2xl border",cardCls,borderCls)}>
+                        <p className={cn("text-[9px] font-medium uppercase tracking-wider mb-1 flex items-center gap-1",muted)}><Target c="w-3 h-3"/> Hedef</p>
+                        <div className="flex flex-wrap items-center gap-1.5 mt-1">
+                            <h2 className="text-lg sm:text-xl font-bold font-mono text-indigo-500">{analysis?.targetPrice?`$${analysis.targetPrice.toLocaleString(undefined,{maximumFractionDigits:4})}`:'---'}</h2>
+                            {analysis?.targetPrice&&analysis?.currentPrice&&(<span className={cn("text-[9px] font-bold font-mono px-1.5 py-0.5 rounded-md",analysis.targetPrice>analysis.currentPrice?"bg-emerald-500/10 text-emerald-500":"bg-rose-500/10 text-rose-500")}>{analysis.targetPrice>analysis.currentPrice?'↑':'↓'} %{((Math.abs(analysis.targetPrice-analysis.currentPrice)/analysis.currentPrice)*100).toFixed(2)}</span>)}
+                        </div>
+                    </div>
+                    <div className={cn("p-3 sm:p-4 rounded-2xl border",cardCls,borderCls)}>
+                        <p className={cn("text-[9px] font-medium uppercase tracking-wider mb-1",muted)}>Güncelleme</p>
+                        <div className="flex items-center gap-1.5"><CheckCircle2 c="w-3.5 h-3.5 text-emerald-500 shrink-0"/><span className="text-sm font-mono">{fmt(lastUpdated)}</span></div>
+                        <div className="mt-2 flex items-center gap-1.5">
+                            <div className={cn("h-1 flex-1 rounded-full overflow-hidden",isDark?"bg-zinc-800":"bg-slate-200")}><div className="h-full bg-indigo-500 transition-all duration-1000" style={{width:`${(countdown/30)*100}%`}}/></div>
+                            <span className={cn("text-[9px] font-mono shrink-0",muted)}>{countdown}s</span>
+                        </div>
+                    </div>
+                </div>
+
+                {/* ÖZET PANELİ */}
+                <div className={cn("mb-4 border p-4 rounded-3xl",cardCls,borderCls)}>
+                    <h3 className={cn("font-bold text-[10px] uppercase tracking-widest mb-3 flex items-center gap-2",muted)}><InfoIcon c="w-4 h-4"/>{timeframe==='LIVE'?'Derinlik Özeti':'Tarihsel Hacim (VP) Özeti'}</h3>
+                    <div className={cn("p-3 rounded-xl border min-h-[44px] flex items-center mb-3",isDark?"bg-zinc-800/30 border-zinc-700/30":"bg-slate-50 border-slate-200")}><p className="text-xs font-medium leading-relaxed">{analysis?.signalReason||'Veriler yükleniyor...'}</p></div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <div className="flex justify-between items-center p-3 rounded-xl bg-rose-500/10 border border-rose-500/20 relative overflow-hidden">
+                            <div className="absolute -right-4 -top-4 w-16 h-16 bg-rose-500/10 rounded-full blur-xl"/>
+                            <div><div className="flex items-center gap-1.5 mb-1"><p className="text-[9px] text-rose-500 uppercase tracking-wider font-bold">Max Satış / Direnç</p>{analysis?.maxAsk&&<span className="text-[8px] bg-rose-500/20 text-rose-400 px-1.5 py-0.5 rounded font-bold flex items-center gap-1"><Zap c="w-2.5 h-2.5"/> {analysis.maxAsk.leverage}</span>}</div><p className="text-lg font-mono font-bold">{analysis?.maxAsk?`$${analysis.maxAsk.price.toLocaleString()}`:'---'}</p></div>
+                            <div className="text-right"><p className="text-xs text-rose-500/70 font-mono">{analysis?.maxAsk?.volume.toLocaleString(undefined,{maximumFractionDigits:1})} Vol</p>{analysis?.maxAsk&&<p className="text-[9px] text-rose-500/50 font-mono mt-0.5">{fmtUSD(analysis.maxAsk.volume*analysis.maxAsk.price)}</p>}</div>
+                        </div>
+                        <div className="flex justify-between items-center p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 relative overflow-hidden">
+                            <div className="absolute -right-4 -top-4 w-16 h-16 bg-emerald-500/10 rounded-full blur-xl"/>
+                            <div><div className="flex items-center gap-1.5 mb-1"><p className="text-[9px] text-emerald-500 uppercase tracking-wider font-bold">Max Alış / Destek</p>{analysis?.maxBid&&<span className="text-[8px] bg-emerald-500/20 text-emerald-400 px-1.5 py-0.5 rounded font-bold flex items-center gap-1"><Zap c="w-2.5 h-2.5"/> {analysis.maxBid.leverage}</span>}</div><p className="text-lg font-mono font-bold">{analysis?.maxBid?`$${analysis.maxBid.price.toLocaleString()}`:'---'}</p></div>
+                            <div className="text-right"><p className="text-xs text-emerald-500/70 font-mono">{analysis?.maxBid?.volume.toLocaleString(undefined,{maximumFractionDigits:1})} Vol</p>{analysis?.maxBid&&<p className="text-[9px] text-emerald-500/50 font-mono mt-0.5">{fmtUSD(analysis.maxBid.volume*analysis.maxBid.price)}</p>}</div>
+                        </div>
+                    </div>
+                </div>
+
+                {/* BASINÇ ÇUBUĞU */}
+                <div className={cn("mb-4 p-3 rounded-2xl border flex flex-col gap-2",cardCls,borderCls)}>
+                    <div className="flex justify-between items-center text-[10px] font-bold uppercase tracking-wider">
+                        <span className="text-emerald-500 flex items-center gap-1">Boğa <span className="font-mono bg-emerald-500/10 px-1 py-0.5 rounded">%{bidPct.toFixed(1)}</span></span>
+                        <span className={cn(muted,"hidden sm:block text-[9px]")}>{timeframe==='LIVE'?'Derinlik Baskısı':'Hacim Baskısı'}</span>
+                        <span className="text-rose-500 flex items-center gap-1"><span className="font-mono bg-rose-500/10 px-1 py-0.5 rounded">%{askPct.toFixed(1)}</span> Ayı</span>
+                    </div>
+                    <div className={cn("h-2 w-full rounded-full overflow-hidden flex",isDark?"bg-zinc-800":"bg-slate-200")}>
+                        <div className="h-full bg-emerald-500 transition-all duration-500" style={{width:`${bidPct}%`}}/>
+                        <div className="h-full bg-rose-500 transition-all duration-500" style={{width:`${askPct}%`}}/>
+                    </div>
+                </div>
+
+                {/* ANA GRID */}
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-5">
+                    <div className="lg:col-span-2 flex flex-col gap-4">
+
+                        <TakeProfitPanel analysis={analysis} tfConfig={tfConfig} dailyVolPct={dailyVolPct} autoSL={autoSL} isDark={isDark} muted={muted} borderCls={borderCls} cardCls={cardCls}/>
+                        <StopLossPanel analysis={analysis} tfConfig={tfConfig} dailyVolPct={dailyVolPct} isDark={isDark} muted={muted} borderCls={borderCls} cardCls={cardCls}/>
+
+                        {/* FİLTRELER + ISI HARİTASI */}
+                        <div className={cn("border p-3 sm:p-5 rounded-3xl flex flex-col",cardCls,borderCls)} style={{height:'580px'}}>
+                            <div className="mb-3 flex flex-col gap-2">
+                                <h3 className={cn("font-bold text-[10px] uppercase tracking-widest",muted)}>
+                                    Filtreler & {timeframe==='LIVE'?'Derinlik':'Isı Haritası'}
+                                </h3>
+                                <div className="w-full overflow-x-auto hide-scrollbar">
+                                    <div className="flex flex-nowrap items-center gap-2 w-max">
+                                        {sliders.map(({key,label,val,min,max,step,current,setter,parse})=>(
+                                            <div key={key} className={cn("flex items-center gap-1.5 px-2 py-1.5 rounded-xl border shrink-0",inputBg,borderCls)}>
+                                                <button onClick={()=>setActiveInfo(activeInfo===key?null:key)} className="flex items-center gap-1 outline-none">
+                                                    <span className={cn("text-[10px] font-medium uppercase tracking-wider",muted)}>{label}</span>
+                                                    <InfoIcon c={cn("w-3 h-3 transition-colors",activeInfo===key?"text-indigo-500":muted)}/>
+                                                </button>
+                                                <input type="range" min={min} max={max} step={step} value={current} onChange={e=>setter(parse(e.target.value))} className={cn("w-14 h-1 rounded-lg",rangeBg)}/>
+                                                <span className="text-[10px] font-mono font-bold text-indigo-500 min-w-[4ch]">{val}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                                {activeInfo&&(<div className={cn("p-3 rounded-xl border flex items-start gap-3 relative fade-in",isDark?"bg-indigo-500/10 border-indigo-500/20 text-indigo-100":"bg-indigo-50 border-indigo-200 text-indigo-900")}>
+                                    <InfoIcon c="w-4 h-4 text-indigo-500 shrink-0 mt-0.5"/>
+                                    <div className="pr-6"><h4 className="font-bold text-xs mb-1 text-indigo-500">{activeInfo==='proximity'?'Mesafe (±%)':activeInfo==='strength'?'Fark Oranı (%)':activeInfo==='volume'?'Hacim Eşiği':'Minimum Kâr (%)'}</h4><p className="text-[10px] leading-relaxed opacity-90">{infoTexts[activeInfo]}</p></div>
+                                    <button onClick={()=>setActiveInfo(null)} className="absolute top-2 right-2 p-1 rounded-md opacity-50 hover:opacity-100 hover:bg-indigo-500/20 transition-all"><XIcon c="w-3 h-3"/></button>
+                                </div>)}
+
+                                {/* ── RENK REHBERİ — sinyale göre dinamik ── */}
+                                <ChartLegend signal={currentSignal} isDark={isDark} muted={muted}/>
+                            </div>
+
+                            {/* Grafik */}
+                            <div className="flex-1 min-h-0 relative">
+                                <div className="absolute left-1/2 top-0 bottom-6 w-px border-l border-dashed border-indigo-500/50 z-10 pointer-events-none">
+                                    <div className="absolute -top-2 left-1/2 -translate-x-1/2 bg-indigo-500 text-white text-[8px] px-1.5 py-0.5 rounded font-bold whitespace-nowrap">Fiyat</div>
+                                </div>
+                                {loading?(<div className="w-full h-full flex items-center justify-center"><div className="flex flex-col items-center gap-3"><RefreshCw c="w-8 h-8 text-indigo-500 spin-slow"/><p className={cn("text-xs",muted)}>Veriler yükleniyor...</p></div></div>)
+                                :chartData.length===0?(<div className="w-full h-full flex items-center justify-center"><div className="flex flex-col items-center gap-2 text-center px-4"><AlertCircle c={cn("w-8 h-8",muted)}/><p className={cn("text-xs",muted)}>Gösterilecek veri yok.<br/>Eşik değerini düşürün veya Mesafe'yi artırın.</p></div></div>)
+                                :(
+                                    <ResponsiveContainer width="100%" height="100%">
+                                        <BarChart data={chartData} margin={{top:10,right:0,left:-20,bottom:0}}>
+                                            <CartesianGrid strokeDasharray="3 3" stroke={isDark?"#1f1f1f":"#e2e8f0"} vertical={false}/>
+                                            <XAxis dataKey="price" stroke={isDark?"#52525b":"#94a3b8"} fontSize={9} tickFormatter={v=>`$${v.toLocaleString()}`} minTickGap={30} tickLine={false} axisLine={false} dy={10}/>
+                                            <YAxis hide/>
+                                            <Tooltip cursor={{fill:isDark?'rgba(255,255,255,0.03)':'rgba(0,0,0,0.03)'}}
+                                                content={({active,payload})=>{
+                                                    if(!active||!payload?.length)return null;
+                                                    const d=payload[0].payload;
+                                                    const isTarget=d.isTarget;
+                                                    const isBid=d.type==='BID';
+                                                    /* Tooltip label — sinyale göre bağlamsal */
+                                                    let role='';
+                                                    if(isTarget) role = currentSignal==='BUY'?'🎯 Hedef (Direnç Duvarı)':'🎯 Hedef (Destek Duvarı)';
+                                                    else if(isBid) role='🟢 Alış / Destek Bölgesi';
+                                                    else role='🔴 Satış / Direnç Bölgesi';
+                                                    return(
+                                                        <div className={cn("backdrop-blur border p-2.5 rounded-lg shadow-xl text-[10px] font-mono",isDark?"bg-zinc-900/90 border-zinc-800 text-zinc-200":"bg-white/90 border-slate-200 text-slate-800")}>
+                                                            <p className={cn("mb-1 text-[9px]",isDark?"text-zinc-400":"text-slate-500")}>{role}</p>
+                                                            <p className="mb-1">Fiyat: <span className="font-bold">${d.price.toLocaleString()}</span></p>
+                                                            <div className="flex items-center gap-1.5">
+                                                                <div className="w-2 h-2 rounded-full shrink-0" style={{backgroundColor:d.fill}}/>
+                                                                <span className="font-bold" style={{color:d.fill}}>
+                                                                    {d.volume.toLocaleString(undefined,{maximumFractionDigits:1})} {symbol.replace('USDT','')}
+                                                                </span>
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                }}/>
+                                            <ReferenceLine y={dMinVol} stroke="#6366f1" strokeDasharray="3 3" opacity={0.5}/>
+                                            <Bar dataKey="volume" radius={[3,3,0,0]} barSize={6}>
+                                                {chartData.map((e,i)=>(
+                                                    <Cell key={i} fill={e.fill} fillOpacity={e.opacity}
+                                                        /* Hedef bar: daha kalın ve parlak */
+                                                        stroke={e.isTarget?'#fbbf24':undefined}
+                                                        strokeWidth={e.isTarget?1.5:0}
+                                                    />
+                                                ))}
+                                            </Bar>
+                                        </BarChart>
+                                    </ResponsiveContainer>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* SAĞ KOLON */}
+                    <div className="space-y-4">
+                        <div className={cn("border p-4 rounded-3xl flex flex-col",cardCls,borderCls)} style={{minHeight:'360px'}}>
+                            <div className="flex justify-between items-center mb-3">
+                                <h3 className={cn("font-bold text-[10px] uppercase tracking-widest flex items-center gap-1.5",muted)}><HistoryIcon c="w-3.5 h-3.5"/> Geçmiş Sinyaller</h3>
+                                {history.length>0&&(<button onClick={()=>setHistory([])} className={cn("flex items-center gap-1 px-2 py-1 rounded-lg transition-colors text-[9px] font-bold uppercase",isDark?"hover:bg-rose-500/10 text-zinc-500 hover:text-rose-400":"hover:bg-rose-50 text-slate-400 hover:text-rose-500")}><Trash2 c="w-3 h-3"/> Temizle</button>)}
+                            </div>
+                            <div className="flex-1 overflow-y-auto pr-1 space-y-2 custom-scrollbar">
+                                {history.length===0?(<div className="flex flex-col items-center justify-center h-full gap-2 py-10"><HistoryIcon c={cn("w-8 h-8 opacity-20",muted)}/><p className={cn("text-[10px] text-center",muted)}>Henüz sinyal yok.<br/>Sinyaller burada birikecek.</p></div>)
+                                :history.map(item=>(<div key={item.id} className={cn("p-2.5 rounded-xl border flex items-center justify-between text-[10px] fade-in",item.signal==='BUY'?"bg-emerald-500/5 border-emerald-500/20":item.signal==='SELL'?"bg-rose-500/5 border-rose-500/20":isDark?"bg-zinc-800/50 border-zinc-700/50":"bg-slate-50 border-slate-200")}>
+                                    <div>
+                                        <div className="flex items-center gap-1.5 mb-0.5">
+                                            <span className={cn("font-bold px-1 py-0.5 rounded text-[8px]",item.signal==='BUY'?"bg-emerald-500/20 text-emerald-500":"bg-rose-500/20 text-rose-500")}>{item.signal==='BUY'?'AL':'SAT'}</span>
+                                            <span className="font-mono font-bold">{item.symbol.replace('USDT','')}</span>
+                                            {item.conf>0&&<span className="text-[8px] text-indigo-400 bg-indigo-500/10 px-1 py-0.5 rounded">%{item.conf}</span>}
+                                        </div>
+                                        <span className={cn("font-mono text-[9px]",muted)}>{fmt(item.time)}</span>
+                                    </div>
+                                    <div className="text-right font-mono text-[9px]">
+                                        <p className={muted}>${item.price.toLocaleString(undefined,{maximumFractionDigits:2})}</p>
+                                        <p className={item.signal==='BUY'?"text-emerald-500":"text-rose-500"}>→ ${item.target?.toLocaleString(undefined,{maximumFractionDigits:2})||'---'}</p>
+                                    </div>
+                                </div>))}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                {/* YASAL UYARI */}
+                <div className={cn("mt-6 p-3 rounded-xl border text-[9px] leading-relaxed",isDark?"bg-zinc-900/30 border-zinc-800 text-zinc-500":"bg-slate-50 border-slate-200 text-slate-400")}>
+                    <span className="font-bold text-yellow-500">⚠️ Risk Uyarısı: </span>
+                    Bu uygulama yalnızca bilgilendirme amaçlıdır, yatırım tavsiyesi değildir. Futures işlemleri yüksek risk içerir. DYOR.
+                </div>
+            </main>
+        </div>
+    );
+}
+
+const root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(<App/>);
+</script>
+</body>
+</html>
